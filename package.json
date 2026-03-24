@@ -1,0 +1,15 @@
+{
+  "name": "@gnarly/dialogue",
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsup"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "tsup": "^8.5.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
