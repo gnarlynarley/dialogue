@@ -1,54 +1,56 @@
 import type { Node, NodeId, OptionsOptionNode, Scene, Story } from './types';
 
 export function createRunner(story: Story) {
-  let currentScene: Scene | null = null;
-  let currentNode: Node | null = null;
+  let scene: Scene | null = null;
+  let node: Node | null = null;
 
-  function jump(name: string) {
-    currentScene = story.find((scene) => scene.name === name) ?? null;
-    currentNode = currentScene?.startNodeId
-      ? (currentScene?.nodes.get(currentScene.startNodeId) ?? null)
-      : null;
-
-    return currentNode;
+  function setScene(name: string) {
+    scene = story.find((scene) => scene.name === name) ?? null;
+    node = scene?.startNodeId ? scene.nodes.get(scene.startNodeId) ?? null : null
+    return node;
   }
 
   function setNextNode(nodeId: NodeId | null) {
     if (nodeId === null) {
-      currentNode = null;
+      node = null;
     } else {
-      currentNode = currentScene?.nodes.get(nodeId) ?? null;
+      node = scene?.nodes.get(nodeId) ?? null;
     }
   }
 
   function chooseOption(option: OptionsOptionNode | null) {
+    if (node?.kind !== 'options') {
+      throw new Error(
+        'Cannot choose an option, currently not at an option node.',
+      );
+    }
     if (option === null) {
-      currentNode = null;
+      node = null;
     } else {
       setNextNode(option.next);
     }
 
-    return currentNode;
+    return node;
   }
 
   function next(): Node | null {
-    if (!currentNode) return null;
-    switch (currentNode.kind) {
+    if (!node) return null;
+    switch (node.kind) {
       case 'text': {
-        setNextNode(currentNode.next);
+        setNextNode(node.next);
         break;
       }
       case 'command': {
-        setNextNode(currentNode.next);
+        setNextNode(node.next);
         break;
       }
       case 'options': {
-        throw new Error('should choose option.');
+        break;
       }
     }
 
-    return currentNode;
+    return node;
   }
 
-  return { jump, next, chooseOption };
+  return { setScene, next, chooseOption };
 }

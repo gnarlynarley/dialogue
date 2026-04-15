@@ -1,49 +1,7 @@
 import type { Story, Node, NodeId, OptionsOptionNode } from './types';
-
-function getIndent(line: string): number {
-  return line.match(/^( *)/)![1]!.length;
-}
-
-/**
- * @description LineReader that allows to iterate over the lines and and also peek into future lines
- */
-class LineReader {
-  private lines: string[];
-  private pos = 0;
-
-  constructor(lines: string[]) {
-    this.lines = lines;
-  }
-
-  hasMore(): boolean {
-    return this.pos < this.lines.length;
-  }
-
-  peek(): string {
-    return this.lines[this.pos] ?? '';
-  }
-
-  advance(): string {
-    return this.lines[this.pos++] ?? '';
-  }
-
-  trimmed(): string {
-    return this.peek().trim();
-  }
-
-  indent(): number {
-    return getIndent(this.peek());
-  }
-
-  skipEmpty(): void {
-    while (this.hasMore() && this.trimmed() === '') this.advance();
-  }
-}
-
-let idCounter = 0;
-function generateId(): string {
-  return `${idCounter++}`;
-}
+import GenerateId from './utils/GenerateId';
+import getIndent from './utils/getIndent';
+import LineReader from './utils/LineReader';
 
 type Segment =
   | { kind: 'text'; text: string }
@@ -57,7 +15,7 @@ type OptionEntry = { text: string; nestedLines: string[] };
  * @param reader LineReader that iterates over the lines
  * @param baseIndent base indent where to start the process
  */
-function tokenize(reader: LineReader, baseIndent: number): Segment[] {
+function createSegments(reader: LineReader, baseIndent: number): Segment[] {
   const segments: Segment[] = [];
 
   while (reader.hasMore()) {
@@ -70,7 +28,7 @@ function tokenize(reader: LineReader, baseIndent: number): Segment[] {
       continue;
     }
 
-    const trimmed = reader.trimmed();
+    const trimmed = reader.peekTrimmed();
 
     if (trimmed.startsWith('>')) {
       segments.push(tokenizeOptions(reader, baseIndent));
@@ -105,22 +63,22 @@ function tokenizeOptions(reader: LineReader, baseIndent: number): Segment {
   const entries: OptionEntry[] = [];
 
   while (reader.hasMore()) {
-    if (reader.trimmed() === '') {
+    if (reader.peekTrimmed() === '') {
       reader.advance();
       continue;
     }
 
     if (reader.indent() < baseIndent) break;
-    if (reader.indent() === baseIndent && !reader.trimmed().startsWith('>'))
+    if (reader.indent() === baseIndent && !reader.peekTrimmed().startsWith('>'))
       break;
 
-    if (reader.indent() === baseIndent && reader.trimmed().startsWith('>')) {
-      const text = reader.trimmed().slice(1).trim();
+    if (reader.indent() === baseIndent && reader.peekTrimmed().startsWith('>')) {
+      const text = reader.peekTrimmed().slice(1).trim();
       reader.advance();
 
       const nestedLines: string[] = [];
       while (reader.hasMore()) {
-        if (reader.trimmed() === '') {
+        if (reader.peekTrimmed() === '') {
           nestedLines.push(reader.advance());
           continue;
         }
@@ -141,13 +99,14 @@ function buildNodeGraph(
   segments: Segment[],
   nextAfter: NodeId | null,
   nodes: Map<NodeId, Node>,
+  generateId: GenerateId,
 ): NodeId | null {
   if (segments.length === 0) return nextAfter;
 
   let currentNext = nextAfter;
 
   for (let i = segments.length - 1; i >= 0; i--) {
-    currentNext = buildNode(segments[i]!, currentNext, nodes);
+    currentNext = buildNode(segments[i]!, currentNext, nodes, generateId);
   }
 
   return currentNext;
@@ -157,15 +116,16 @@ function buildNode(
   seg: Segment,
   next: NodeId | null,
   nodes: Map<NodeId, Node>,
+  generateId: GenerateId,
 ): NodeId {
   switch (seg.kind) {
     case 'text': {
-      const id = generateId();
+      const id = generateId.create();
       nodes.set(id, { kind: 'text', id, text: seg.text, next });
       return id;
     }
     case 'command': {
-      const id = generateId();
+      const id = generateId.create();
       nodes.set(id, {
         kind: 'command',
         id,
@@ -176,10 +136,15 @@ function buildNode(
       return id;
     }
     case 'options': {
-      const id = generateId();
+      const id = generateId.create();
       const options: OptionsOptionNode[] = seg.entries.map((entry) => {
-        const optId = generateId();
-        const optNext = buildNestedOption(entry.nestedLines, next, nodes);
+        const optId = generateId.create();
+        const optNext = buildNestedOption(
+          entry.nestedLines,
+          next,
+          nodes,
+          generateId,
+        );
         return { id: optId, text: entry.text, next: optNext };
       });
       nodes.set(id, { kind: 'options', id, options });
@@ -192,15 +157,16 @@ function buildNestedOption(
   nestedLines: string[],
   fallback: NodeId | null,
   nodes: Map<NodeId, Node>,
+  generateId: GenerateId,
 ): NodeId | null {
   const firstNonEmpty = nestedLines.find((l) => l.trim() !== '');
   if (!firstNonEmpty) return fallback;
 
   const nestedIndent = getIndent(firstNonEmpty);
   const reader = new LineReader(nestedLines);
-  const segments = tokenize(reader, nestedIndent);
+  const segments = createSegments(reader, nestedIndent);
 
-  return buildNodeGraph(segments, fallback, nodes) ?? fallback;
+  return buildNodeGraph(segments, fallback, nodes, generateId) ?? fallback;
 }
 
 function splitScenes(
@@ -210,20 +176,20 @@ function splitScenes(
   const reader = new LineReader(allLines);
 
   while (reader.hasMore()) {
-    if (reader.trimmed() !== '---') {
+    if (reader.peekTrimmed() !== '---') {
       reader.advance();
       continue;
     }
     reader.advance();
 
     const header: string[] = [];
-    while (reader.hasMore() && reader.trimmed() !== '---') {
+    while (reader.hasMore() && reader.peekTrimmed() !== '---') {
       header.push(reader.advance());
     }
     if (reader.hasMore()) reader.advance();
 
     const body: string[] = [];
-    while (reader.hasMore() && reader.trimmed() !== '===') {
+    while (reader.hasMore() && reader.peekTrimmed() !== '===') {
       body.push(reader.advance());
     }
     if (reader.hasMore()) reader.advance();
@@ -240,13 +206,14 @@ function parseName(headerLines: string[]): string {
 }
 
 export function parse(storyString: string): Story {
-  idCounter = 0;
+  const generateId = new GenerateId();
 
   return splitScenes(storyString.split('\n')).map(({ header, body }) => {
     const name = parseName(header);
     const nodes = new Map<NodeId, Node>();
-    const segments = tokenize(new LineReader(body), 0);
-    const startNodeId = buildNodeGraph(segments, null, nodes);
+    const segments = createSegments(new LineReader(body), 0);
+    const startNodeId = buildNodeGraph(segments, null, nodes, generateId);
+
     return { name, startNodeId, nodes };
   });
 }

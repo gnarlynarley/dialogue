@@ -1,5 +1,4 @@
 import { createRunner, parse } from '../src';
-import type { Node, NodeId, OptionsOptionNode, Scene } from '../src';
 
 const story = parse(`
 ---
@@ -32,18 +31,26 @@ The end
 `);
 
 const runner = createRunner(story);
-
-let node = runner.jump('Start');
+let node = runner.setScene('Start')
 while (node) {
   switch (node.kind) {
     case 'text': {
-      console.log(node.text);
+      console.log('[text]', node.text);
       node = runner.next();
       break;
     }
     case 'command': {
-      console.log(node.name);
-      node = runner.next();
+      console.log('[command]', node.name, node.argument);
+      switch (node.name) {
+        case 'scene': {
+          node = runner.setScene(node.argument!)
+          break;
+        }
+        default: {
+          node = runner.next();
+          break
+        }
+      }
       break;
     }
     case 'options': {
@@ -53,7 +60,7 @@ while (node) {
         node = null;
         break;
       }
-      console.log(option.text);
+      console.log('[option]', option.text);
       node = runner.chooseOption(option);
       break;
     }
