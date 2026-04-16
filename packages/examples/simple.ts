@@ -1,4 +1,4 @@
-import { createRunner, parse } from '../src';
+import { createRunner, parse } from 'vertel';
 
 const story = parse(`
 ---

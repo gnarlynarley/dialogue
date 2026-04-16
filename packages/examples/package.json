@@ -1,9 +1,6 @@
 {
-  "name": "vertel-monorepo",
+  "name": "vertel-examples",
   "version": "1.0.0",
-  "workspaces": [
-    "packages/*"
-  ],
   "devDependencies": {
     "vertel": "workspace:*"
   }
